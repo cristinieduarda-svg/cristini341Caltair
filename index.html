@@ -3,75 +3,229 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Muay Thai - A Arte das Oito Armas</title>
+    <title>Mini Minecraft 2D</title>
     <style>
-        /* Estilização Geral */
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            line-height: 1.6;
             margin: 0;
             padding: 0;
-            background-color: #f4f4f4;
-            color: #333;
+            background-color: #87CEEB; /* Cor do céu */
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
-
-        /* Cabeçalho */
-        header {
-            background-color: #1a1a1a;
-            color: #fff;
-            padding: 40px 20px;
-            text-align: center;
-            border-bottom: 5px solid #d9534f;
+        #gameCanvas {
+            display: block;
+            background-color: #87CEEB;
+            margin: 0 auto;
+            box-shadow: 0 0 20px rgba(0,0,0,0.3);
         }
-
-        header h1 {
-            margin: 0;
-            font-size: 2.5em;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-        }
-
-        header p {
-            margin: 10px 0 0 0;
-            font-style: italic;
-            color: #bbb;
-        }
-
-        /* Container Principal */
-        .container {
-            max-width: 900px;
-            margin: 30px auto;
-            padding: 0 20px;
-        }
-
-        /* Seções */
-        section {
-            background: #fff;
-            padding: 25px;
-            margin-bottom: 20px;
+        #instrucoes {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 15px;
             border-radius: 8px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            font-size: 14px;
+            pointer-events: none;
+        }
+        h3 { margin-top: 0; color: #5cff5c; }
+    </style>
+</head>
+<body>
+
+    <div id="instrucoes">
+        <h3>Controles:</h3>
+        A / D ou Setas - Mover<br>
+        W ou Espaço - Pular<br>
+        Clique Esquerdo - Quebrar Bloco<br>
+        Clique Direito - Colocar Bloco
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+
+        // Ajusta o tamanho da tela
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const BLOCK_SIZE = 40;
+        const COLS = Math.ceil(canvas.width / BLOCK_SIZE);
+        const ROWS = Math.ceil(canvas.height / BLOCK_SIZE);
+
+        // Definição dos blocos (0 = Ar, 1 = Grama, 2 = Terra, 3 = Pedra)
+        const BLOCK_TYPES = {
+            0: null, // Ar
+            1: "#567d46", // Grama
+            2: "#866043", // Terra
+            3: "#808080"  // Pedra
+        };
+
+        let world = [];
+
+        // Geração do mundo básico
+        for (let r = 0; r < ROWS; r++) {
+            world[r] = [];
+            for (let c = 0; c < COLS; c++) {
+                let groundLevel = Math.floor(ROWS / 2) + Math.floor(Math.sin(c * 0.2) * 2); // Relevo suave
+                
+                if (r < groundLevel) {
+                    world[r][c] = 0; // Céu / Ar
+                } else if (r === groundLevel) {
+                    world[r][c] = 1; // Grama
+                } else if (r > groundLevel && r < groundLevel + 4) {
+                    world[r][c] = 2; // Terra
+                } else {
+                    world[r][c] = 3; // Pedra
+                }
+            }
         }
 
-        h2 {
-            color: #d9534f;
-            border-bottom: 2px solid #eee;
-            padding-bottom: 10px;
-            margin-top: 0;
+        // Configurações do Jogador
+        const player = {
+            x: canvas.width / 2,
+            y: 100,
+            width: 25,
+            height: 38,
+            vx: 0,
+            vy: 0,
+            speed: 4,
+            jumpForce: 12,
+            grounded: false,
+            color: "#ffad60" // Cor do "Steve"
+        };
+
+        const gravity = 0.5;
+        const keys = {};
+
+        // Eventos do teclado
+        window.addEventListener("keydown", (e) => keys[e.key.toLowerCase()] = true);
+        window.addEventListener("keyup", (e) => keys[e.key.toLowerCase()] = false);
+
+        // Previne o menu de contexto no clique direito
+        window.addEventListener("contextmenu", e => e.preventDefault());
+
+        // Interação com o mouse (Quebrar e colocar blocos)
+        window.addEventListener("mousedown", (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            const c = Math.floor(mouseX / BLOCK_SIZE);
+            const r = Math.floor(mouseY / BLOCK_SIZE);
+
+            if (r >= 0 && r < ROWS && c >= 0 && c < COLS) {
+                if (e.button === 0) {
+                    // Clique esquerdo: Quebra o bloco (vira ar)
+                    world[r][c] = 0;
+                } else if (e.button === 2) {
+                    // Clique direito: Coloca bloco de grama se estiver vazio
+                    if (world[r][c] === 0) {
+                        world[r][c] = 1;
+                    }
+                }
+            }
+        });
+
+        // Detecção de colisão simples com o cenário
+        function checkCollision(x, y) {
+            const left = Math.floor(x / BLOCK_SIZE);
+            const right = Math.floor((x + player.width) / BLOCK_SIZE);
+            const top = Math.floor(y / BLOCK_SIZE);
+            const bottom = Math.floor((y + player.height) / BLOCK_SIZE);
+
+            if (left < 0 || right >= COLS || top < 0 || bottom >= ROWS) return true;
+
+            // Verifica se encostou em qualquer bloco que não seja AR (0)
+            for (let r = top; r <= bottom; r++) {
+                for (let c = left; c <= right; c++) {
+                    if (world[r] && world[r][c] > 0) {
+                        return true;
+                    }
+                }
+            }
+            return false;
         }
 
-        /* Tabela de Armas */
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 15px;
+        // Atualização dos movimentos do jogo
+        function update() {
+            // Movimento lateral
+            if (keys["a"] || keys["arrowleft"]) player.vx = -player.speed;
+            else if (keys["d"] || keys["arrowright"]) player.vx = player.speed;
+            else player.vx = 0;
+
+            // Pulo
+            if ((keys["w"] || keys[" "] || keys["arrowup"]) && player.grounded) {
+                player.vy = -player.jumpForce;
+                player.grounded = false;
+            }
+
+            // Aplica gravidade
+            player.vy += gravity;
+
+            // Movimento horizontal e checagem de colisão
+            player.x += player.vx;
+            if (checkCollision(player.x, player.y)) {
+                player.x -= player.vx; // Desfaz movimento se colidir
+            }
+
+            // Movimento vertical e checagem de colisão
+            player.y += player.vy;
+            if (checkCollision(player.x, player.y)) {
+                if (player.vy > 0) {
+                    player.grounded = true;
+                }
+                player.y -= player.vy; // Desfaz movimento se colidir
+                player.vy = 0;
+            }
         }
 
-        th, td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #ddd;
+        // Desenhar os elementos na tela
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Desenha os blocos do mundo
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    let type = world[r][c];
+                    if (type > 0) {
+                        ctx.fillStyle = BLOCK_TYPES[type];
+                        ctx.fillRect(c * BLOCK_SIZE, r * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+                        
+                        // Desenha uma borda leve nos blocos para parecerem pixelados
+                        ctx.strokeStyle = "rgba(0,0,0,0.1)";
+                        ctx.strokeRect(c * BLOCK_SIZE, r * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+                    }
+                }
+            }
+
+            // Desenha o Jogador
+            ctx.fillStyle = player.color;
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+            
+            // Detalhe dos "olhos" do jogador para saber para onde olha
+            ctx.fillStyle = "#fff";
+            ctx.fillRect(player.x + (player.vx >= 0 ? 15 : 3), player.y + 5, 5, 5);
         }
 
-        th {
-            background-color: #d
+        // Loop principal do jogo
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Inicia o jogo
+        gameLoop();
+
+        // Ajusta tamanho caso mude a janela
+        window.addEventListener("resize", () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+    </script>
+</body>
+</html>
